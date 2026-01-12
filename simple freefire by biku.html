@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Mini Free Fire – Biku</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#0a0a0a;color:#fff;font-family:Arial}
+canvas{display:block}
+#ui{position:fixed;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:15px;font-size:14px}
+#hpbar{width:150px;height:14px;border:2px solid #fff}
+#hp{height:100%;background:#0f8}
+#joystick{position:fixed;bottom:20px;left:20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.1)}
+#stick{position:absolute;width:40px;height:40px;border-radius:50%;background:#fff;top:40px;left:40px}
+#over{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);align-items:center;justify-content:center;flex-direction:column;font-size:28px;text-align:center}
+button{margin-top:20px;padding:10px 20px;font-size:18px;border-radius:6px}
+#menu{position:fixed;top:10px;right:10px;font-size:24px;cursor:pointer;z-index:10;color:#fff}
+#instructions{display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#fff;text-align:center;font-size:14px;line-height:1.4;background:rgba(0,0,0,.7);padding:8px 12px;border-radius:8px;z-index:10}
+</style>
+</head>
+<body>
+
+<div id="ui">
+ <div>Score <span id="s">0</span></div>
+ <div>High <span id="hs">0</span></div>
+ <div id="hpbar"><div id="hp"></div></div>
+</div>
+
+<div id="menu">⋮</div>
+<div id="instructions">
+<h3>How to Play</h3>
+<strong>PC:</strong> W A S D = Move, Mouse Click = Shoot, 1/2/3 = Change Guns<br>
+<strong>Android:</strong> Left Joystick = Move, Right Tap = Shoot<br>
+Goal: Survive & get high score!
+</div>
+
+<div id="joystick"><div id="stick"></div></div>
+
+<div id="over">
+ GAME OVER
+ <div style="font-size:16px;margin-top:8px">Created by <b>Biku</b></div>
+ <button onclick="location.reload()">Restart</button>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const c=document.getElementById("c"),x=c.getContext("2d");
+c.width=innerWidth;c.height=innerHeight;
+
+let bullets=[],enemies=[],score=0,high=localStorage.hs||0;
+document.getElementById("hs").innerText=high;
+
+const guns={
+ pistol:{rate:400,spd:8},
+ rifle:{rate:150,spd:11},
+ shotgun:{rate:700,spd:7,pellets:5}
+};
+let gun="pistol",lastShot=0;
+
+const player={x:c.width/2,y:c.height/2,r:18,hp:100,speed:4,dx:0,dy:0};
+
+// Toggle instructions
+document.getElementById("menu").addEventListener("click",()=>{
+ let instr = document.getElementById("instructions");
+ instr.style.display = instr.style.display==="none"?"block":"none";
+});
+
+// Shooting
+function shoot(tx,ty){
+ let now=Date.now();
+ if(now-lastShot<guns[gun].rate) return;
+ lastShot=now;
+ let a=Math.atan2(ty-player.y,tx-player.x);
+ let g=guns[gun];
+ let count=g.pellets||1;
+ for(let i=0;i<count;i++){
+  bullets.push({x:player.x,y:player.y,dx:Math.cos(a+(Math.random()-.5)/6)*g.spd,dy:Math.sin(a+(Math.random()-.5)/6)*g.spd});
+ }
+}
+
+// PC Controls
+let keys={};
+addEventListener("keydown",e=>keys[e.key]=true);
+addEventListener("keyup",e=>keys[e.key]=false);
+addEventListener("mousedown",e=>shoot(e.clientX,e.clientY));
+addEventListener("keydown",e=>{
+ if(e.key==="1")gun="pistol";
+ if(e.key==="2")gun="rifle";
+ if(e.key==="3")gun="shotgun";
+});
+
+// Mobile Joystick
+let joy=document.getElementById("joystick"),stick=document.getElementById("stick");
+joy.addEventListener("touchmove",e=>{
+ let t=e.touches[0],r=joy.getBoundingClientRect();
+ let dx=t.clientX-(r.left+60),dy=t.clientY-(r.top+60);
+ let d=Math.min(40,Math.hypot(dx,dy));
+ let a=Math.atan2(dy,dx);
+ stick.style.left=60+Math.cos(a)*d-20+"px";
+ stick.style.top=60+Math.sin(a)*d-20+"px";
+ player.dx=Math.cos(a)*player.speed;
+ player.dy=Math.sin(a)*player.speed;
+});
+joy.addEventListener("touchend",()=>{stick.style.left="40px";stick.style.top="40px";player.dx=0;player.dy=0;});
+
+// Touch shoot
+addEventListener("touchstart",e=>{
+ if(e.touches[0].clientX>innerWidth/2) shoot(e.touches[0].clientX,e.touches[0].clientY);
+});
+
+// Enemy spawn
+function spawnEnemy(){
+ enemies.push({x:Math.random()*c.width,y:Math.random()*c.height,r:18,hp:3,spd:1.5});
+}
+setInterval(spawnEnemy,1200);
+
+// Update function
+function update(){
+ // Unified movement
+ let mvX=0,mvY=0;
+ if(keys.w) mvY-=player.speed;
+ if(keys.s) mvY+=player.speed;
+ if(keys.a) mvX-=player.speed;
+ if(keys.d) mvX+=player.speed;
+ mvX+=player.dx; mvY+=player.dy;
+ player.x+=mvX; player.y+=mvY;
+
+ // Clamp
+ player.x=Math.max(player.r,Math.min(c.width-player.r,player.x));
+ player.y=Math.max(player.r,Math.min(c.height-player.r,player.y));
+
+ // Bullets move
+ bullets.forEach(b=>{b.x+=b.dx;b.y+=b.dy;});
+
+ // Enemy logic
+ enemies.forEach(e=>{
+  let a=Math.atan2(player.y-e.y,player.x-e.x);
+  e.x+=Math.cos(a)*e.spd;
+  e.y+=Math.sin(a)*e.spd;
+  if(Math.hypot(e.x-player.x,e.y-player.y)<e.r+player.r) player.hp-=0.5;
+ });
+
+ // Bullet collision
+ enemies=enemies.filter(e=>{
+  let hit=bullets.some(b=>{
+   if(Math.hypot(b.x-e.x,b.y-e.y)<e.r){
+    e.hp--; return e.hp<=0&&(score++,true);
+   }
+  });
+  return !hit;
+ });
+
+ bullets=bullets.filter(b=>b.x>0&&b.y>0&&b.x<c.width&&b.y<c.height);
+
+ // Update UI
+ document.getElementById("s").innerText=score;
+ document.getElementById("hp").style.width=player.hp+"%";
+ if(score>high){high=score;localStorage.hs=high;document.getElementById("hs").innerText=high;}
+ if(player.hp<=0) document.getElementById("over").style.display="flex";
+}
+
+// Draw function
+function draw(){
+ x.fillStyle="#111"; x.fillRect(0,0,c.width,c.height);
+
+ // Player
+ x.fillStyle="#0f8"; x.beginPath(); x.arc(player.x,player.y,player.r,0,6.28); x.fill();
+
+ // Bullets
+ x.fillStyle="yellow"; bullets.forEach(b=>{x.beginPath();x.arc(b.x,b.y,3,0,6.28);x.fill();});
+
+ // Enemies
+ x.fillStyle="red"; enemies.forEach(e=>{x.beginPath();x.arc(e.x,e.y,e.r,0,6.28);x.fill();});
+}
+
+// Game loop
+(function loop(){update();draw();requestAnimationFrame(loop)})();
+</script>
+
+</body>
+</html>
